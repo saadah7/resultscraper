@@ -1,4 +1,4 @@
-# Osmania Result Finder
+Result links Finder
 
 A robust Python script that automates the tedious process of finding your academic results on the Osmania University examination portal. It scans hundreds of links, intelligently submits forms with your roll number, and pinpoints the exact pages where your results are located.
 
