@@ -11,6 +11,7 @@ Example:
 
 import argparse
 import re
+import ssl
 import time
 import unicodedata
 from dataclasses import dataclass
@@ -18,15 +19,17 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 
 import certifi
+from tqdm import tqdm
 import requests
 from bs4 import BeautifulSoup
+from urllib3.exceptions import SSLError as Urllib3SSLError
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # ---------------- Config ----------------
 HEADERS = {"User-Agent": "Mozilla/5.0 (result-finder)"}
 REQUEST_TIMEOUT = 30
-DEFAULT_MAX_FOLLOW = 250
+DEFAULT_MAX_FOLLOW = 2000  # Increased default to handle large index pages
 COURTESY_DELAY = 0.15
 
 # Phrases that indicate "no record" (we’ll check case-insensitively)
@@ -80,21 +83,51 @@ def likely_roll_field(name: str, typ: str, placeholder: str, label: str) -> int:
 
     return score
 
+class FallbackTLSAdapter(HTTPAdapter):
+    """
+    An HTTP adapter that attempts a request with default TLS settings, but falls back
+    to forcing TLSv1.2 if a 'TLSV1_ALERT_INTERNAL_ERROR' occurs.
+    This handles servers that don't gracefully negotiate down from TLSv1.3.
+    """
+    def send(self, request, **kwargs):
+        try:
+            # First attempt with default (modern) TLS settings
+            return super().send(request, **kwargs)
+        except requests.exceptions.SSLError as e:
+            # Check if the error is the specific handshake failure
+            is_internal_alert_error = (
+                isinstance(e.args[0], Urllib3SSLError) and
+                isinstance(e.args[0].reason, ssl.SSLError) and
+                'TLSV1_ALERT_INTERNAL_ERROR' in str(e.args[0].reason)
+            )
+
+            if is_internal_alert_error:
+                # The server might not support TLSv1.3, so we retry and force TLSv1.2
+                print(f"TLS handshake failed for {request.url}, retrying with TLSv1.2...")
+                kwargs['ssl_context'] = ssl.create_default_context()
+                kwargs['ssl_context'].minimum_version = ssl.TLSVersion.TLSv1_2
+                # Forcing a more compatible cipher suite for problematic servers
+                kwargs['ssl_context'].set_ciphers(
+                    "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH"
+                )
+                return super().send(request, **kwargs)
+            else:
+                # Re-raise any other SSL error
+                raise
+
 def build_session(verify_path):
     retry = Retry(
         total=3,
         backoff_factor=0.3,
         status_forcelist=[502, 503, 504],
-        allowed_methods=["GET", "HEAD", "POST"],
-        raise_on_status=False,
+        raise_on_status=False, allowed_methods=None,  # Retry on all methods, including on connection errors
     )
-    adapter = HTTPAdapter(max_retries=retry)
+    adapter = FallbackTLSAdapter(max_retries=retry)
 
     s = requests.Session()
     s.headers.update(HEADERS)
     s.verify = verify_path
     s.mount("https://", adapter)
-    s.mount("http://", adapter)
     return s
 
 @dataclass
@@ -202,15 +235,27 @@ def looks_like_negative(html_text: str, roll: str) -> bool:
             return True
     return False
 
-def looks_like_positive(html_text: str, roll: str) -> bool:
-    # Positive if the roll shows up and no negative phrase is detected
-    if str(roll) in html_text and not looks_like_negative(html_text, roll):
-        return True
-    # Some result pages may show "Result", "Marks", "GPA", etc.
-    if re.search(r"\b(result|marks|sgpa|cgpa|grade|subject)\b", html_text, re.IGNORECASE):
-        if not looks_like_negative(html_text, roll):
-            return True
-    return False
+def looks_like_positive(html_text: str, roll: str, keywords: List[str], stream_filters: List[str]) -> bool:
+    normalized_text = norm(html_text)
+    roll_str = str(roll).lower()
+
+    # 1. Must contain the roll number
+    if roll_str not in normalized_text:
+        return False
+
+    # 2. Must NOT contain any negative phrases
+    if looks_like_negative(html_text, roll): # looks_like_negative already normalizes
+        return False
+
+    # 3. Must contain at least one of the provided keywords (if any)
+    if keywords and not any(norm(kw) in normalized_text for kw in keywords):
+        return False
+
+    # 4. Must contain at least one of the stream filters (if any)
+    if stream_filters and not any(norm(sf) in normalized_text for sf in stream_filters):
+        return False
+
+    return True
 
 # ---------------- Main ----------------
 def main():
@@ -219,6 +264,8 @@ def main():
     ap.add_argument("roll", help="Your roll / hall ticket number, e.g., 161022733073")
     ap.add_argument("--max-follow", type=int, default=DEFAULT_MAX_FOLLOW, help="Limit links followed (politeness).")
     ap.add_argument("--delay", type=float, default=COURTESY_DELAY, help="Delay between requests (seconds).")
+    ap.add_argument("--keywords", type=str, help="Comma-separated keywords that must be present on a result page (e.g., 'grade,marks,total').")
+    ap.add_argument("--stream-filter", type=str, help="Comma-separated stream filters (e.g., 'BE,CBCS'). Pages must contain at least one of these.")
     ap.add_argument("--insecure", action="store_true", help="Skip TLS verification (only if needed).")
     args = ap.parse_args()
 
@@ -226,12 +273,22 @@ def main():
     if args.insecure:
         requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
 
+    keywords = [kw.strip().lower() for kw in args.keywords.split(',')] if args.keywords else []
+    stream_filters = [sf.strip().lower() for sf in args.stream_filter.split(',')] if args.stream_filter else []
+
     session = build_session(verify_arg)
 
     # 1) Fetch index and collect links
     print(f"Fetching index: {args.index_url}")
-    idx = session.get(args.index_url, timeout=REQUEST_TIMEOUT)
-    idx.raise_for_status()
+    try:
+        idx = session.get(args.index_url, timeout=REQUEST_TIMEOUT)
+        idx.raise_for_status()
+    except requests.exceptions.SSLError as e:
+        print(f"\n[ERROR] SSL certificate verification failed: {e}")
+        print("This is often due to an issue with the server's certificate or a network proxy.")
+        print("Try running the script again with the --insecure flag, like this:\n")
+        print(f'  python finder.py "{args.index_url}" {args.roll} --insecure')
+        return
 
     soup = BeautifulSoup(idx.text, "html.parser")
     anchors = soup.find_all("a", href=True)
@@ -244,11 +301,16 @@ def main():
 
     print(f"Found {len(links)} links on index page.")
 
+    if len(links) > args.max_follow:
+        print(f"NOTE: Will only process the first {args.max_follow} links due to --max-follow limit.")
+    else:
+        print(f"Processing all {len(links)} links.")
+
     # 2) Follow each link, detect and submit form
     matches: List[str] = []
     seen = set()
 
-    for i, (text, href) in enumerate(links, start=1):
+    for i, (text, href) in enumerate(tqdm(links, desc="Checking Links"), start=1):
         if len(seen) >= args.max_follow:
             break
         if href in seen:
@@ -287,7 +349,7 @@ def main():
                 continue
 
             body = resp.text or ""
-            if looks_like_positive(body, args.roll):
+            if looks_like_positive(body, args.roll, keywords, stream_filters):
                 matches.append(href)
                 hit = True
                 break
