@@ -10,6 +10,7 @@ Example:
 """
 
 import argparse
+import concurrent.futures
 import re
 import ssl
 import time
@@ -30,7 +31,7 @@ from urllib3.util.retry import Retry
 HEADERS = {"User-Agent": "Mozilla/5.0 (result-finder)"}
 REQUEST_TIMEOUT = 30
 DEFAULT_MAX_FOLLOW = 2000  # Increased default to handle large index pages
-COURTESY_DELAY = 0.15
+DEFAULT_WORKERS = 10
 
 # Phrases that indicate "no record" (we’ll check case-insensitively)
 NEGATIVE_PHRASES = [
@@ -257,13 +258,57 @@ def looks_like_positive(html_text: str, roll: str, keywords: List[str], stream_f
 
     return True
 
+def check_link(
+    href: str,
+    session: requests.Session,
+    roll: str,
+    keywords: List[str],
+    stream_filters: List[str],
+) -> Optional[str]:
+    """
+    Processes a single link: fetches, parses forms, submits, and checks for a positive result.
+    Returns the href if it's a match, otherwise None.
+    """
+    # quick skip: ignore obvious non-result links (anchors, mailto, javascript)
+    if href.startswith("javascript:") or href.startswith("mailto:") or href.endswith(("#",)):
+        return None
+
+    try:
+        r = session.get(href, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.RequestException:
+        return None
+
+    if r.status_code != 200 or not r.text:
+        return None
+
+    forms = parse_forms(r.url, r.text)
+    if not forms:
+        # some result pages may redirect to a dedicated JSP (like the one you shared)
+        # if this page itself looks like a result form with JS, we’d need Selenium (out of scope here)
+        return None
+
+    # submit to the first form that has a likely roll field
+    for form in forms:
+        if not form.roll_field_name:
+            continue
+        resp = submit_form(session, form, roll)
+        if not resp or resp.status_code != 200:
+            continue
+
+        body = resp.text or ""
+        if looks_like_positive(body, roll, keywords, stream_filters):
+            return href  # It's a match
+
+    return None
+
+
 # ---------------- Main ----------------
 def main():
     ap = argparse.ArgumentParser(description="Find Osmania result links that return a valid result for your roll.")
     ap.add_argument("index_url", help="e.g., https://www.osmania.ac.in/examination-results.php")
     ap.add_argument("roll", help="Your roll / hall ticket number, e.g., 161022733073")
     ap.add_argument("--max-follow", type=int, default=DEFAULT_MAX_FOLLOW, help="Limit links followed (politeness).")
-    ap.add_argument("--delay", type=float, default=COURTESY_DELAY, help="Delay between requests (seconds).")
+    ap.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Number of concurrent workers for checking links.")
     ap.add_argument("--keywords", type=str, help="Comma-separated keywords that must be present on a result page (e.g., 'grade,marks,total').")
     ap.add_argument("--stream-filter", type=str, help="Comma-separated stream filters (e.g., 'BE,CBCS'). Pages must contain at least one of these.")
     ap.add_argument("--insecure", action="store_true", help="Skip TLS verification (only if needed).")
@@ -306,55 +351,30 @@ def main():
     else:
         print(f"Processing all {len(links)} links.")
 
-    # 2) Follow each link, detect and submit form
+    # 2) Concurrently follow each link, detect and submit form
     matches: List[str] = []
     seen = set()
-
-    for i, (text, href) in enumerate(tqdm(links, desc="Checking Links"), start=1):
-        if len(seen) >= args.max_follow:
-            break
-        if href in seen:
-            continue
-        seen.add(href)
-
-        # quick skip: ignore obvious non-result links (anchors, mailto, javascript)
-        if href.startswith("javascript:") or href.startswith("mailto:") or href.endswith(("#",)):
-            continue
-
-        try:
-            r = session.get(href, timeout=REQUEST_TIMEOUT)
-        except requests.exceptions.SSLError as e:
-            print(f"[{i}] TLS issue on {href}: {e}")
-            continue
-        except Exception:
-            continue
-
-        if r.status_code != 200 or not r.text:
-            continue
-
-        forms = parse_forms(r.url, r.text)
-        if not forms:
-            # some result pages may redirect to a dedicated JSP (like the one you shared)
-            # if this page itself looks like a result form with JS, we’d need Selenium (out of scope here)
-            time.sleep(args.delay)
-            continue
-
-        # submit to the first form that has a likely roll field
-        hit = False
-        for form in forms:
-            if not form.roll_field_name:
-                continue
-            resp = submit_form(session, form, args.roll)
-            if not resp or resp.status_code != 200:
-                continue
-
-            body = resp.text or ""
-            if looks_like_positive(body, args.roll, keywords, stream_filters):
-                matches.append(href)
-                hit = True
+    links_to_check = []
+    for _, href in links:
+        if href not in seen:
+            seen.add(href)
+            links_to_check.append(href)
+            if len(links_to_check) >= args.max_follow:
                 break
-            # If it’s the exact negative phrase, we skip quietly
-        time.sleep(args.delay)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
+        # Create a future for each link to be checked
+        future_to_url = {
+            executor.submit(check_link, href, session, args.roll, keywords, stream_filters): href
+            for href in links_to_check
+        }
+
+        # Process results as they complete
+        for future in tqdm(concurrent.futures.as_completed(future_to_url), total=len(links_to_check), desc="Checking Links"):
+            result_href = future.result()
+            if result_href:
+                matches.append(result_href)
+
 
     # 3) Output
     # de-dupe while preserving order
