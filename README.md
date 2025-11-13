@@ -33,16 +33,15 @@ A robust Python script that automates the tedious process of finding your academ
 
     ```bash
     # For Windows
-    set FLASK_APP=app.py
-    flask run
+    set FLASK_APP=app.py 
+    python -m flask run
 
     # For macOS/Linux
     export FLASK_APP=app.py
-    flask run
+    python -m flask run
     ```
     Now, open your web browser and go to `http://127.0.0.1:5000`.
 
----
 
 ## CLI Usage (Advanced)
 3.  **Run the script:**
