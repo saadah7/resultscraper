@@ -1,6 +1,9 @@
-# Output files
-matches.txt
-
-# Python cache
+# Python
 __pycache__/
 *.pyc
+
+# Flask
+instance/
+
+# Output files
+matches.txt

@@ -301,6 +301,80 @@ def check_link(
 
     return None
 
+def find_results(
+    index_url: str,
+    roll: str,
+    keywords: List[str],
+    stream_filters: List[str],
+    insecure: bool,
+    max_follow: int,
+    workers: int,
+) -> List[str]:
+    """
+    The core logic for finding result links.
+
+    This function is separate from main() so it can be imported and used by other
+    scripts, such as a web application.
+
+    Returns:
+        A list of unique matching URLs.
+    """
+    verify_arg = False if insecure else certifi.where()
+    if insecure:
+        requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
+
+    session = build_session(verify_arg)
+
+    # 1) Fetch index and collect links
+    print(f"Fetching index: {index_url}")
+    try:
+        idx = session.get(index_url, timeout=REQUEST_TIMEOUT)
+        idx.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"\n[ERROR] Could not fetch the main results page: {e}")
+        return []
+
+    soup = BeautifulSoup(idx.text, "html.parser")
+    anchors = soup.find_all("a", href=True)
+    links: List[Tuple[str, str]] = []  # (text, absolute_url)
+
+    for a in anchors:
+        text = a.get_text(" ", strip=True) or ""
+        href = urljoin(idx.url, a["href"])
+        links.append((text, href))
+
+    print(f"Found {len(links)} links on index page.")
+
+    # 2) Concurrently follow each link, detect and submit form
+    matches: List[str] = []
+    seen = set()
+    links_to_check = []
+    for _, href in links:
+        if href not in seen:
+            seen.add(href)
+            links_to_check.append(href)
+            if len(links_to_check) >= max_follow:
+                break
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_url = {
+            executor.submit(check_link, href, session, roll, keywords, stream_filters): href
+            for href in links_to_check
+        }
+
+        for future in tqdm(concurrent.futures.as_completed(future_to_url), total=len(links_to_check), desc="Checking Links"):
+            result_href = future.result()
+            if result_href:
+                matches.append(result_href)
+
+    # De-dupe while preserving order
+    deduped = []
+    seen_out = set()
+    for u in matches:
+        if u not in seen_out:
+            deduped.append(u)
+            seen_out.add(u)
+    return deduped
 
 # ---------------- Main ----------------
 def main():
@@ -314,86 +388,30 @@ def main():
     ap.add_argument("--insecure", action="store_true", help="Skip TLS verification (only if needed).")
     args = ap.parse_args()
 
-    verify_arg = False if args.insecure else certifi.where()
-    if args.insecure:
-        requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
-
     keywords = [kw.strip().lower() for kw in args.keywords.split(',')] if args.keywords else []
     stream_filters = [sf.strip().lower() for sf in args.stream_filter.split(',')] if args.stream_filter else []
 
-    session = build_session(verify_arg)
+    # Call the core logic function
+    final_matches = find_results(
+        index_url=args.index_url,
+        roll=args.roll,
+        keywords=keywords,
+        stream_filters=stream_filters,
+        insecure=args.insecure,
+        max_follow=args.max_follow,
+        workers=args.workers,
+    )
 
-    # 1) Fetch index and collect links
-    print(f"Fetching index: {args.index_url}")
-    try:
-        idx = session.get(args.index_url, timeout=REQUEST_TIMEOUT)
-        idx.raise_for_status()
-    except requests.exceptions.SSLError as e:
-        print(f"\n[ERROR] SSL certificate verification failed: {e}")
-        print("This is often due to an issue with the server's certificate or a network proxy.")
-        print("Try running the script again with the --insecure flag, like this:\n")
-        print(f'  python finder.py "{args.index_url}" {args.roll} --insecure')
-        return
-
-    soup = BeautifulSoup(idx.text, "html.parser")
-    anchors = soup.find_all("a", href=True)
-    links: List[Tuple[str, str]] = []  # (text, absolute_url)
-
-    for a in anchors:
-        text = a.get_text(" ", strip=True) or ""
-        href = urljoin(idx.url, a["href"])
-        links.append((text, href))
-
-    print(f"Found {len(links)} links on index page.")
-
-    if len(links) > args.max_follow:
-        print(f"NOTE: Will only process the first {args.max_follow} links due to --max-follow limit.")
-    else:
-        print(f"Processing all {len(links)} links.")
-
-    # 2) Concurrently follow each link, detect and submit form
-    matches: List[str] = []
-    seen = set()
-    links_to_check = []
-    for _, href in links:
-        if href not in seen:
-            seen.add(href)
-            links_to_check.append(href)
-            if len(links_to_check) >= args.max_follow:
-                break
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
-        # Create a future for each link to be checked
-        future_to_url = {
-            executor.submit(check_link, href, session, args.roll, keywords, stream_filters): href
-            for href in links_to_check
-        }
-
-        # Process results as they complete
-        for future in tqdm(concurrent.futures.as_completed(future_to_url), total=len(links_to_check), desc="Checking Links"):
-            result_href = future.result()
-            if result_href:
-                matches.append(result_href)
-
-
-    # 3) Output
-    # de-dupe while preserving order
-    deduped = []
-    seen_out = set()
-    for u in matches:
-        if u not in seen_out:
-            deduped.append(u)
-            seen_out.add(u)
-
-    if deduped:
+    # 3) Output results
+    if final_matches:
         print("\nResult links where your roll is present:")
-        for u in deduped:
+        for u in final_matches:
             print(u)
     else:
         print("\nNo matching result links found.")
 
     with open("matches.txt", "w", encoding="utf-8") as f:
-        for u in deduped:
+        for u in final_matches:
             f.write(u + "\n")
     print("Saved to matches.txt")
 
