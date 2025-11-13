@@ -33,12 +33,12 @@ A robust Python script that automates the tedious process of finding your academ
 
     **Basic Example:**
     ```bash
-    python -m src.finder "https://www.osmania.ac.in/examination-results.php" 161022733073
+    python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073
     ```
 
     **Recommended Example (with filters):**
     ```bash
-    python -m src.finder "https://www.osmania.ac.in/examination-results.php" 161022733073 --insecure --stream-filter "BE,CBCS" --keywords "marks,grade,total" --workers 20
+    python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073 --insecure --stream-filter "BE,CBCS" --keywords "marks,grade,total" --workers 20
     ```
 
 ---
