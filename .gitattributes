@@ -1,0 +1,5 @@
+# Set default behavior, in case users don't have core.autocrlf set.
+* text=auto
+
+# Force LF endings for specific file types to ensure consistency
+.py text eol=lf
