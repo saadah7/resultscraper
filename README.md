@@ -70,3 +70,5 @@ A robust Python script that automates the tedious process of finding your academ
 | `--keywords`      | (Optional) Comma-separated keywords that must appear on a valid result page (e.g., "marks,grade,total"). |
 | `--workers`       | (Optional) Number of concurrent threads to use for checking links. Defaults to `10`.                    |
 | `--max-follow`    | (Optional) The maximum number of links to check. Defaults to `2000`.                                    |
+
+This project is just for practising python and web scraping
