@@ -1,10 +1,15 @@
 import sys
 import uuid
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, render_template, request, jsonify
 from finder import find_results  # Import our refactored function
 
 app = Flask(__name__)
+
+# --- Logging Configuration ---
+# Configure logging to show detailed error information in the console.
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- App State & Configuration ---
 
@@ -47,7 +52,7 @@ def search():
 
 def background_task(task_id: str, roll_number: str):
     """The actual workhorse function that runs in the background."""
-    print(f"Starting background search for roll: {roll_number} (Task ID: {task_id})", file=sys.stderr)
+    app.logger.info(f"Starting background search for roll: {roll_number} (Task ID: {task_id})")
     try:
         found_links = find_results(
             index_url=INDEX_URL,
@@ -59,9 +64,9 @@ def background_task(task_id: str, roll_number: str):
             workers=DEFAULT_WORKERS,
         )
         TASKS[task_id] = {"status": "complete", "results": found_links}
-        print(f"Task {task_id} finished. Found {len(found_links)} links.", file=sys.stderr)
+        app.logger.info(f"Task {task_id} finished. Found {len(found_links)} links.")
     except Exception as e:
-        print(f"Task {task_id} failed: {e}", file=sys.stderr)
+        app.logger.error(f"Task {task_id} failed!", exc_info=True)
         TASKS[task_id] = {"status": "error", "results": []}
 
 @app.route('/status/<task_id>', methods=['GET'])

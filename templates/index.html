@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Results Scraper</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; }
+      form { margin-bottom: 1rem; }
+      .error { color: red; }
+      .result { margin-top: 1rem; padding: 0.5rem; border: 1px solid #ddd; }
+    </style>
+  </head>
+  <body>
+    <h1>Results Scraper</h1>
+
+    {% if error %}
+      <p class="error">{{ error }}</p>
+    {% endif %}
+
+    <form method="post" action="/search">
+      <label for="roll">Roll number</label>
+      <input id="roll" name="roll_number" type="text" value="{{ roll_number or '' }}" required>
+      <button type="submit">Search</button>
+    </form>
+
+    {% if task_id %}
+      <div id="status">
+        <p>Task submitted. Task ID: <strong>{{ task_id }}</strong></p>
+        <p>Polling for results...</p>
+      </div>
+      <div id="results"></div>
+
+      <script>
+        (function pollStatus(){
+          const taskId = {{ task_id|tojson }};
+          const statusEl = document.getElementById('status');
+          const resultsEl = document.getElementById('results');
+
+          function renderData(data){
+            resultsEl.innerHTML = '';
+            if(data.status === 'complete'){
+              if(data.results && data.results.length){
+                const ul = document.createElement('ul');
+                data.results.forEach(function(r){
+                  const li = document.createElement('li');
+                  const a = document.createElement('a');
+                  a.href = r;
+                  a.target = '_blank';
+                  a.rel = 'noopener noreferrer';
+                  a.textContent = r;
+                  li.appendChild(a);
+                  ul.appendChild(li);
+                });
+                resultsEl.appendChild(ul);
+              } else {
+                resultsEl.textContent = 'No results found.';
+              }
+              statusEl.innerHTML = '<p>Completed.</p>';
+            } else if(data.status === 'error'){
+              statusEl.innerHTML = '<p class="error">Task failed. Check server logs.</p>';
+            } else {
+              statusEl.innerHTML = '<p>Still running... (status: ' + data.status + ')</p>';
+            }
+          }
+
+          function fetchOnce(){
+            fetch('/status/' + encodeURIComponent(taskId))
+              .then(function(r){
+                if(!r.ok) throw new Error('Network response not ok');
+                return r.json();
+              })
+              .then(function(data){
+                renderData(data);
+                if(data.status === 'pending'){
+                  setTimeout(pollStatus, 1500);
+                }
+              })
+              .catch(function(err){
+                statusEl.innerHTML = '<p class="error">Error polling status: ' + err.message + '</p>';
+              });
+          }
+
+          fetchOnce();
+        })();
+      </script>
+    {% endif %}
+
+  </body>
+</html>
