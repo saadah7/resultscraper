@@ -1,0 +1,5 @@
+# Cleaned requirements (sorted, no markdown fences)
+beautifulsoup4
+certifi
+requests
+tqdm

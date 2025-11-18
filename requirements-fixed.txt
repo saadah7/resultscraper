@@ -1,5 +1,2 @@
-# Cleaned requirements (sorted, no markdown fences)
-beautifulsoup4
-certifi
-requests
-tqdm
+This file has been moved to `requirements/requirements-fixed.txt` to keep dependency files organized.
+Please use `requirements/requirements-fixed.txt` instead of this file.
