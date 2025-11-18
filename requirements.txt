@@ -1,4 +1,2 @@
-requests
-beautifulsoup4
-tqdm
-certifi
+This file has been moved to `requirements/requirements.txt` to keep dependency files organized.
+Please use `requirements/requirements.txt` instead of this file.
