@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Result Finder — locate exam result pages by submitting roll numbers to forms
 """
 Osmania Result Finder (form-submitting version)
 
@@ -6,7 +7,7 @@ From the main results index page, follow each result link, detect the input form
 submit your roll number, and report only those links that return a valid result.
 
 Example:
-  python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073 --max-follow 300
+    python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073 --max-follow 300
 """
 
 import argparse
