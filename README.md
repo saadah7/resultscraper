@@ -15,47 +15,47 @@ A robust Python script that automates the tedious process of finding your academ
 
 ---
 
-## 🚀 Setup & Usage
+## 🚀 Installation
 
 1.  **Clone the repository:**
    ```bash
-    git clone https://github.com/your-username/resultscraper.git
-    cd resultscraper
-    ```
+   git clone https://github.com/your-username/resultscraper.git
+   cd resultscraper
+   ```
 
 2.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-4.  **Run the Web Application (Recommended):**
-    The easiest way to use the finder is through the web interface.
+## 🔧 Usage
 
-    ```bash
-    # For Windows
-    set FLASK_APP=app.py 
-    python -m flask run
+### Web Application (Recommended)
+The easiest way to use the finder is through the web interface.
 
-    # For macOS/Linux
-    export FLASK_APP=app.py
-    python -m flask run
-    ```
-    Now, open your web browser and go to `http://127.0.0.1:5000`.
+```bash
+# For Windows
+set FLASK_APP=app.py 
+python -m flask run
 
+# For macOS/Linux
+export FLASK_APP=app.py
+python -m flask run
+```
+Now, open your web browser and go to `http://127.0.0.1:5000`.
 
-## CLI Usage (Advanced)
-3.  **Run the script:**
-    The script is run from the project's root directory. You must provide the main results URL and your roll number.
+### Command-Line Interface (Advanced)
+The script is run from the project's root directory. You must provide the main results URL and your roll number.
 
-    **Basic Example:**
-    ```bash
-    python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073
-    ```
+**Basic Example:**
+```bash
+python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073
+```
 
-    **Recommended Example (with filters):**
-    ```bash
-    python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073 --insecure --stream-filter "BE,CBCS" --keywords "marks,grade,total" --workers 20
-    ```
+**Recommended Example (with filters):**
+```bash
+python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073 --insecure --stream-filter "BE,CBCS" --keywords "marks,grade,total" --workers 20
+```
 
 ---
 
@@ -71,4 +71,5 @@ A robust Python script that automates the tedious process of finding your academ
 | `--workers`       | (Optional) Number of concurrent threads to use for checking links. Defaults to `10`.                    |
 | `--max-follow`    | (Optional) The maximum number of links to check. Defaults to `2000`.                                    |
 
-This project is just for practising python and web scraping
+\\
+This project was developed as a practical exercise in Python and web scraping.
