@@ -313,6 +313,7 @@ def main():
     ap.add_argument("--keywords", type=str, help="Comma-separated keywords that must be present on a result page (e.g., 'grade,marks,total').")
     ap.add_argument("--stream-filter", type=str, help="Comma-separated stream filters (e.g., 'BE,CBCS'). Pages must contain at least one of these.")
     ap.add_argument("--insecure", action="store_true", help="Skip TLS verification (only if needed).")
+    ap.add_argument("--output", "-o", type=str, default="matches.txt", help="Output file to save matching links (default: matches.txt).")
     args = ap.parse_args()
 
     verify_arg = False if args.insecure else certifi.where()
@@ -393,10 +394,12 @@ def main():
     else:
         print("\nNo matching result links found.")
 
-    with open("matches.txt", "w", encoding="utf-8") as f:
+    # Save output to user-specified file (default: matches.txt)
+    output_path = args.output or "matches.txt"
+    with open(output_path, "w", encoding="utf-8") as f:
         for u in deduped:
             f.write(u + "\n")
-    print("Saved to matches.txt")
+    print(f"Saved to {output_path}")
 
 if __name__ == "__main__":
     main()

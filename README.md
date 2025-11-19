@@ -16,6 +16,7 @@ A robust Python script that automates the tedious process of finding your academ
 - **Resilient Networking**: Built to handle network errors, slow servers, and problematic TLS/SSL configurations without crashing.
 - **Real-time Progress**: Displays a `tqdm` progress bar showing the status, speed, and estimated time remaining.
 - **Saves Results**: All matching links are saved to `matches.txt` for easy access.
+ - **Saves Results**: All matching links are saved to `matches.txt` by default. Use the `--output` / `-o` option to change the output file.
 
 ---
 
@@ -43,6 +44,11 @@ A robust Python script that automates the tedious process of finding your academ
     **Recommended Example (with filters):**
     ```bash
     python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073 --insecure --stream-filter "BE,CBCS" --keywords "marks,grade,total" --workers 20
+    ```
+
+    **Save to a custom file:**
+    ```bash
+    python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073 -o results.txt
     ```
 
 ---
