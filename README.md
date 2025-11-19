@@ -14,6 +14,7 @@ A robust Python script that automates the tedious process of finding your academ
 - **Real-time Progress**: Displays a `tqdm` progress bar showing the status, speed, and estimated time remaining.
 - **Saves Results**: All matching links are saved to `matches.txt` for easy access.
  - **Saves Results**: All matching links are saved to `matches.txt` by default. Use the `--output` / `-o` option to change the output file.
+ - **Append Mode**: Use `--append` to append results to the output file instead of overwriting it.
 
 ---
 
@@ -46,6 +47,11 @@ A robust Python script that automates the tedious process of finding your academ
     **Save to a custom file:**
     ```bash
     python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073 -o results.txt
+    ```
+
+    **Append to an existing file:**
+    ```bash
+    python finder.py "https://www.osmania.ac.in/examination-results.php" 161022733073 -o results.txt --append
     ```
 
 ---

@@ -314,6 +314,7 @@ def main():
     ap.add_argument("--stream-filter", type=str, help="Comma-separated stream filters (e.g., 'BE,CBCS'). Pages must contain at least one of these.")
     ap.add_argument("--insecure", action="store_true", help="Skip TLS verification (only if needed).")
     ap.add_argument("--output", "-o", type=str, default="matches.txt", help="Output file to save matching links (default: matches.txt).")
+    ap.add_argument("--append", action="store_true", help="Append to the output file instead of overwriting.")
     args = ap.parse_args()
 
     verify_arg = False if args.insecure else certifi.where()
@@ -396,10 +397,14 @@ def main():
 
     # Save output to user-specified file (default: matches.txt)
     output_path = args.output or "matches.txt"
-    with open(output_path, "w", encoding="utf-8") as f:
+    mode = "a" if args.append else "w"
+    with open(output_path, mode, encoding="utf-8") as f:
         for u in deduped:
             f.write(u + "\n")
-    print(f"Saved to {output_path}")
+    if args.append:
+        print(f"Appended {len(deduped)} result(s) to {output_path}")
+    else:
+        print(f"Saved to {output_path}")
 
 if __name__ == "__main__":
     main()
