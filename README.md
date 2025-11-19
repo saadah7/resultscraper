@@ -1,8 +1,5 @@
 Result links Finder
 
-Hi my name is saad and im batman, im onmy journey to learn ai and automation
-
-
 
 A robust Python script that automates the tedious process of finding your academic results on the Osmania University examination portal. It scans hundreds of links, intelligently submits forms with your roll number, and pinpoints the exact pages where your results are located.
 
@@ -65,4 +62,3 @@ A robust Python script that automates the tedious process of finding your academ
 | `--workers`       | (Optional) Number of concurrent threads to use for checking links. Defaults to `10`.                    |
 | `--max-follow`    | (Optional) The maximum number of links to check. Defaults to `2000`.                                    |
 
-Why do you think i am building this?
