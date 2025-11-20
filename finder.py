@@ -27,6 +27,8 @@ from bs4 import BeautifulSoup
 from urllib3.exceptions import SSLError as Urllib3SSLError
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import logging
+import sys
 
 # ---------------- Config ----------------
 HEADERS = {"User-Agent": "Mozilla/5.0 (result-finder)"}
@@ -105,7 +107,7 @@ class FallbackTLSAdapter(HTTPAdapter):
 
             if is_internal_alert_error:
                 # The server might not support TLSv1.3, so we retry and force TLSv1.2
-                print(f"TLS handshake failed for {request.url}, retrying with TLSv1.2...")
+                logging.warning(f"TLS handshake failed for {request.url}, retrying with TLSv1.2...")
                 kwargs['ssl_context'] = ssl.create_default_context()
                 kwargs['ssl_context'].minimum_version = ssl.TLSVersion.TLSv1_2
                 # Forcing a more compatible cipher suite for problematic servers
@@ -317,6 +319,18 @@ def main():
     ap.add_argument("--append", action="store_true", help="Append to the output file instead of overwriting.")
     args = ap.parse_args()
 
+    # Configure logging options
+    ap.add_argument("--log-level", type=str, choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO", help="Set logging level.")
+    ap.add_argument("--no-color", action="store_true", help="Disable colored output (if any).")
+
+    # Note: argparse was already parsed; re-parse to include new logging args when present.
+    # This is a simple approach so we can add logging flags without restructuring the parser.
+    args = ap.parse_args()
+
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    logging.basicConfig(stream=sys.stdout, level=log_level, format="%(levelname)s: %(message)s")
+    use_color = not args.no_color
+
     verify_arg = False if args.insecure else certifi.where()
     if args.insecure:
         requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
@@ -327,15 +341,15 @@ def main():
     session = build_session(verify_arg)
 
     # 1) Fetch index and collect links
-    print(f"Fetching index: {args.index_url}")
+    logging.info(f"Fetching index: {args.index_url}")
     try:
         idx = session.get(args.index_url, timeout=REQUEST_TIMEOUT)
         idx.raise_for_status()
     except requests.exceptions.SSLError as e:
-        print(f"\n[ERROR] SSL certificate verification failed: {e}")
-        print("This is often due to an issue with the server's certificate or a network proxy.")
-        print("Try running the script again with the --insecure flag, like this:\n")
-        print(f'  python finder.py "{args.index_url}" {args.roll} --insecure')
+        logging.error(f"SSL certificate verification failed: {e}")
+        logging.info("This is often due to an issue with the server's certificate or a network proxy.")
+        logging.info("Try running the script again with the --insecure flag, like this:")
+        logging.info(f'  python finder.py "{args.index_url}" {args.roll} --insecure')
         return
 
     soup = BeautifulSoup(idx.text, "html.parser")
@@ -347,12 +361,12 @@ def main():
         href = urljoin(idx.url, a["href"])
         links.append((text, href))
 
-    print(f"Found {len(links)} links on index page.")
+    logging.info(f"Found {len(links)} links on index page.")
 
     if len(links) > args.max_follow:
-        print(f"NOTE: Will only process the first {args.max_follow} links due to --max-follow limit.")
+        logging.info(f"NOTE: Will only process the first {args.max_follow} links due to --max-follow limit.")
     else:
-        print(f"Processing all {len(links)} links.")
+        logging.info(f"Processing all {len(links)} links.")
 
     # 2) Concurrently follow each link, detect and submit form
     matches: List[str] = []
@@ -389,11 +403,11 @@ def main():
             seen_out.add(u)
 
     if deduped:
-        print("\nResult links where your roll is present:")
+        logging.info("\nResult links where your roll is present:")
         for u in deduped:
-            print(u)
+            logging.info(u)
     else:
-        print("\nNo matching result links found.")
+        logging.info("\nNo matching result links found.")
 
     # Save output to user-specified file (default: matches.txt)
     output_path = args.output or "matches.txt"
@@ -402,9 +416,9 @@ def main():
         for u in deduped:
             f.write(u + "\n")
     if args.append:
-        print(f"Appended {len(deduped)} result(s) to {output_path}")
+        logging.info(f"Appended {len(deduped)} result(s) to {output_path}")
     else:
-        print(f"Saved to {output_path}")
+        logging.info(f"Saved to {output_path}")
 
 if __name__ == "__main__":
     main()
